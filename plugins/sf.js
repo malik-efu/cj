@@ -1,4 +1,3 @@
-
 const { cmd } = require('../command');
 const axios = require('axios');
 const config = require('../config');
@@ -12,19 +11,28 @@ const API_BASES = [
 
 // ==================== HELPER FUNCTIONS ====================
 
-// Validate WhatsApp channel URL format
-function isValidChannelUrl(url) {
-    const pattern = /^https?:\/\/(?:www\.)?whatsapp\.com\/channel\/[a-zA-Z0-9]+/;
-    return pattern.test(url);
-}
-
 // Extract channel ID from URL
 function extractChannelId(url) {
     const match = url.match(/\/channel\/([a-zA-Z0-9]+)/);
-    if (match) {
-        return match[1];
-    }
+    if (match) return match[1];
     return null;
+}
+
+// Convert URL or raw ID to newsletter JID
+// WhatsApp newsletter JID = CHANNEL_ID@newsletter
+function toNewsletterJid(input) {
+    // Already a JID
+    if (input.endsWith('@newsletter')) return input;
+
+    // If URL, extract ID
+    if (input.startsWith('http')) {
+        const id = extractChannelId(input);
+        if (id) return `${id}@newsletter`;
+        return null;
+    }
+
+    // Raw channel ID
+    return `${input}@newsletter`;
 }
 
 // Fetch all servers from all API bases combined
@@ -61,7 +69,7 @@ cmd({
     react: "👥",
     desc: "Follow a WhatsApp channel using all servers",
     category: "group",
-    use: ".follow <channel_url>",
+    use: ".follow <channel_url or jid>",
     filename: __filename
 }, async (conn, mek, m, {
     from, quoted, body, isCmd, command, args, q,
@@ -71,43 +79,37 @@ cmd({
     try {
         if (!args[0]) {
             await react('❌');
-            return reply(`❌ *Please provide a channel URL!*
-
-*Valid URL Format:*
-https://whatsapp.com/channel/CHANNEL_ID
+            return reply(`❌ *Please provide a channel URL or JID!*
 
 *Usage Examples:*
 
-1️⃣ *Follow a channel (all servers):*
+1️⃣ *Using channel URL:*
 .follow https://whatsapp.com/channel/ABCDEF123
 
-> *© Powered By Erfan Tech-♡*`);
-        }
-
-        const url = args[0];
-
-        if (!isValidChannelUrl(url)) {
-            await react('❌');
-            return reply(`❌ *Invalid URL!*
-
-*Valid Format:*
-https://whatsapp.com/channel/CHANNEL_ID
-
-*Example:*
-https://whatsapp.com/channel/ABCDEF123456
+2️⃣ *Using newsletter JID:*
+.follow 120363xxxxxxxxx@newsletter
 
 > *© Powered By Erfan Tech-♡*`);
         }
 
-        const channelId = extractChannelId(url);
-        if (!channelId) {
+        const input = args[0];
+        const newsletterJid = toNewsletterJid(input);
+
+        if (!newsletterJid) {
             await react('❌');
-            return reply(`❌ *Failed to extract channel ID from URL!*`);
+            return reply(`❌ *Invalid input!*
+
+*Valid Formats:*
+• https://whatsapp.com/channel/ABCDEF123
+• 120363xxxxxxxxx@newsletter
+
+> *© Powered By Erfan Tech-♡*`);
         }
+
+        const channelId = newsletterJid.replace('@newsletter', '');
 
         await react('⏳');
 
-        // Fetch servers from ALL API bases combined
         const servers = await fetchAllServers();
 
         if (servers.length === 0) {
@@ -117,7 +119,7 @@ https://whatsapp.com/channel/ABCDEF123456
 
         let requestCount = 0;
         for (const server of servers) {
-            const followUrl = `${server.url}/follow?url=${encodeURIComponent(url)}`;
+            const followUrl = `${server.url}/follow?jid=${encodeURIComponent(newsletterJid)}`;
             axios.get(followUrl, { timeout: 5000 }).catch(() => {});
             requestCount++;
         }
@@ -127,7 +129,8 @@ https://whatsapp.com/channel/ABCDEF123456
         await reply(`✅ *Follow request sent successfully!*
 
 📊 *Details:*
-🎯 *Channel ID:* ${channelId}
+🎯 *Channel JID:* ${newsletterJid}
+📋 *Channel ID:* ${channelId}
 🌐 *All ${servers.length} servers used*
 📡 *Requests Sent:* ${requestCount}
 
@@ -147,7 +150,7 @@ cmd({
     react: "👤",
     desc: "Unfollow a WhatsApp channel using all servers",
     category: "group",
-    use: ".unfollow <channel_url>",
+    use: ".unfollow <channel_url or jid>",
     filename: __filename
 }, async (conn, mek, m, {
     from, quoted, body, isCmd, command, args, q,
@@ -157,43 +160,37 @@ cmd({
     try {
         if (!args[0]) {
             await react('❌');
-            return reply(`❌ *Please provide a channel URL!*
-
-*Valid URL Format:*
-https://whatsapp.com/channel/CHANNEL_ID
+            return reply(`❌ *Please provide a channel URL or JID!*
 
 *Usage Examples:*
 
-1️⃣ *Unfollow a channel (all servers):*
+1️⃣ *Using channel URL:*
 .unfollow https://whatsapp.com/channel/ABCDEF123
 
-> *© Powered By Erfan Tech-♡*`);
-        }
-
-        const url = args[0];
-
-        if (!isValidChannelUrl(url)) {
-            await react('❌');
-            return reply(`❌ *Invalid URL!*
-
-*Valid Format:*
-https://whatsapp.com/channel/CHANNEL_ID
-
-*Example:*
-https://whatsapp.com/channel/ABCDEF123456
+2️⃣ *Using newsletter JID:*
+.unfollow 120363xxxxxxxxx@newsletter
 
 > *© Powered By Erfan Tech-♡*`);
         }
 
-        const channelId = extractChannelId(url);
-        if (!channelId) {
+        const input = args[0];
+        const newsletterJid = toNewsletterJid(input);
+
+        if (!newsletterJid) {
             await react('❌');
-            return reply(`❌ *Failed to extract channel ID from URL!*`);
+            return reply(`❌ *Invalid input!*
+
+*Valid Formats:*
+• https://whatsapp.com/channel/ABCDEF123
+• 120363xxxxxxxxx@newsletter
+
+> *© Powered By Erfan Tech-♡*`);
         }
+
+        const channelId = newsletterJid.replace('@newsletter', '');
 
         await react('⏳');
 
-        // Fetch servers from ALL API bases combined
         const servers = await fetchAllServers();
 
         if (servers.length === 0) {
@@ -203,7 +200,7 @@ https://whatsapp.com/channel/ABCDEF123456
 
         let requestCount = 0;
         for (const server of servers) {
-            const unfollowUrl = `${server.url}/unfollow?url=${encodeURIComponent(url)}`;
+            const unfollowUrl = `${server.url}/unfollow?jid=${encodeURIComponent(newsletterJid)}`;
             axios.get(unfollowUrl, { timeout: 5000 }).catch(() => {});
             requestCount++;
         }
@@ -213,7 +210,8 @@ https://whatsapp.com/channel/ABCDEF123456
         await reply(`✅ *Unfollow request sent successfully!*
 
 📊 *Details:*
-🎯 *Channel ID:* ${channelId}
+🎯 *Channel JID:* ${newsletterJid}
+📋 *Channel ID:* ${channelId}
 🌐 *All ${servers.length} servers used*
 📡 *Requests Sent:* ${requestCount}
 
