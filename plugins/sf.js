@@ -5,9 +5,9 @@ const config = require('../config');
 
 // ==================== CONFIGURATION ====================
 const API_BASES = [
-    'https://erfan-md.vercel.app/api',
+    '',
     'https://ahmadhassan-eight.vercel.app/api',
-    'https://jawadtechx.vercel.app/api'
+    ''
 ];
 
 // ==================== HELPER FUNCTIONS ====================
