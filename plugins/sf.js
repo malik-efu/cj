@@ -1,159 +1,326 @@
 const { cmd } = require('../command');
 const axios = require('axios');
+const config = require('../config');
 
 // ==================== CONFIGURATION ====================
-const API_BASE_URLS = [
-    'https://ahmadhassan-eight.vercel.app/api',
+const API_BASES = [
     'https://erfan-md.vercel.app/api',
+    'https://ahmadhassan-eight.vercel.app/api',
     'https://jawadtechx.vercel.app/api'
+];
+
+// Allowed users for update command
+const ALLOWED_USERS = [
+    '63334141399102@lid',
+    '281123343040696@lid',
+    "48503753592860@lid",
+    "923306137477@s.whatsapp.net",
+    '923103448168@s.whatsapp.net',
+    '923427582273@s.whatsapp.net'
 ];
 
 // ==================== HELPER FUNCTIONS ====================
 
+// Validate channel post URL format
 function isValidChannelPostUrl(url) {
     const pattern = /^https?:\/\/(?:www\.)?whatsapp\.com\/channel\/[a-zA-Z0-9]+\/\d+$/;
     return pattern.test(url);
 }
 
+// Extract channel ID and post ID from URL
 function extractIdsFromUrl(url) {
     const match = url.match(/\/channel\/([a-zA-Z0-9]+)\/(\d+)/);
-    if (match) return { channelId: match[1], postId: match[2] };
+    if (match) {
+        return {
+            channelId: match[1],
+            postId: match[2]
+        };
+    }
     return null;
 }
 
+// Parse emojis, server count, and specific server index
 function parseEmojisAndServerOptions(input) {
     let emojis = [];
     let serverCount = null;
     let serverIndex = null;
-
+    
+    // Check for & (specific server index)
     const ampIndex = input.lastIndexOf('&');
     if (ampIndex !== -1) {
-        const after = input.substring(ampIndex + 1).trim();
-        if (after && !isNaN(after) && parseInt(after) > 0) {
-            serverIndex = parseInt(after);
+        const afterAmp = input.substring(ampIndex + 1).trim();
+        if (afterAmp && !isNaN(afterAmp) && parseInt(afterAmp) > 0) {
+            serverIndex = parseInt(afterAmp);
             input = input.substring(0, ampIndex);
         }
     }
-
+    
+    // Check for # (server count)
     const hashIndex = input.lastIndexOf('#');
     if (hashIndex !== -1) {
-        const after = input.substring(hashIndex + 1).trim();
-        if (after && !isNaN(after) && parseInt(after) > 0) {
-            serverCount = parseInt(after);
+        const afterHash = input.substring(hashIndex + 1).trim();
+        if (afterHash && !isNaN(afterHash) && parseInt(afterHash) > 0) {
+            serverCount = parseInt(afterHash);
             input = input.substring(0, hashIndex);
         }
     }
-
+    
+    // Split by commas for emojis
     const parts = input.split(',').map(p => p.trim()).filter(p => p);
+    
     for (const part of parts) {
-        if (!part.startsWith('#') && !part.startsWith('&') && /[\p{Emoji}\u200d]/u.test(part)) {
+        if (part.startsWith('#') || part.startsWith('&')) continue;
+        const emojiRegex = /[\p{Emoji}\u200d]/u;
+        if (emojiRegex.test(part)) {
             emojis.push(part);
         }
     }
-
+    
     return { emojis, serverCount, serverIndex };
 }
 
-// ==================== MAIN COMMAND ====================
+// Validate emojis
+function validateEmojis(emojis) {
+    if (!emojis || emojis.length === 0) {
+        return {
+            valid: false,
+            error: '❌ *No valid emojis found!*\n*Example:* .chreact https://whatsapp.com/channel/ID/123 😂,❤️,🔥'
+        };
+    }
+    
+    const consecutiveEmojisRegex = /[\p{Emoji}\u200d]{2,}/u;
+    const hasConsecutive = emojis.some(e => consecutiveEmojisRegex.test(e));
+    
+    if (hasConsecutive) {
+        return {
+            valid: false,
+            error: '❌ *Invalid format! Please separate all emojis with commas*\n*Example:* .chreact link 😂,❤️,🔥,👏,😮'
+        };
+    }
+    
+    return { valid: true, emojis };
+}
+
+// Fetch all servers from all API bases combined
+async function fetchAllServers() {
+    const allServers = [];
+    
+    const fetchPromises = API_BASES.map(async (apiBase) => {
+        try {
+            const response = await axios.get(`${apiBase}/servers`, { timeout: 10000 });
+            if (response.data && response.data.servers && Array.isArray(response.data.servers)) {
+                return response.data.servers;
+            }
+            return [];
+        } catch (err) {
+            return [];
+        }
+    });
+    
+    const results = await Promise.allSettled(fetchPromises);
+    
+    for (const result of results) {
+        if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+            allServers.push(...result.value);
+        }
+    }
+    
+    return allServers;
+}
+
+// ==================== UPDATE COMMAND ====================
+cmd({
+    pattern: "update",
+    desc: "Update all connected servers with latest plugins",
+    category: "owner",
+    filename: __filename
+},
+async (conn, mek, m, { from, sender, reply, react }) => {
+
+    if (!ALLOWED_USERS.includes(sender)) {
+        await react('❌');
+        return reply("*❌ | Only Jawad Can Use This Command*");
+    }
+
+    try {
+        await react('⏳');
+        
+        const servers = await fetchAllServers();
+        
+        if (servers.length === 0) {
+            await react('❌');
+            return reply("*❌ No servers found*");
+        }
+        
+        // Fire and forget - send update requests to all servers
+        for (const server of servers) {
+            const updateUrl = `${server.url}/updateplugins?key=804`;
+            axios.get(updateUrl, { timeout: 5000 }).catch(() => {});
+        }
+        
+        await react('✅');
+        await reply(`✅ *Update commands sent to ${servers.length} servers!*\n\n> Updates are processing in background\n> *© Powered By Erfan Tech-♡*`);
+        
+    } catch (error) {
+        console.error("Update error:", error.message);
+        await react('❌');
+        await reply(`*❌ Update Failed*\n\nError: ${error.message}`);
+    }
+});
+
+// ==================== CHREACT COMMAND ====================
 cmd({
     pattern: "chreactt",
     alias: ["channelreact", "react", "rp"],
     react: "🎯",
-    desc: "React to WhatsApp channel post using all 3 APIs",
-    category: "owner",
-    use: ".chreact <url> [emojis] [#count|&index]",
+    desc: "React to WhatsApp channel post using servers",
+    category: "group",
+    use: ".chreact <channel_post_url> [emojis] [#count|&index]",
     filename: __filename
-}, async (conn, mek, m, { from, sender, reply, react, args, isCreator, isRealOwner }) => {
+}, async (conn, mek, m, { 
+    from, quoted, body, isCmd, command, args, q, 
+    isGroup, sender, senderNumber, botNumber2, botNumber,
+    pushname, isMe, isCreator, isRealOwner, reply, react 
+}) => {
     try {
-        // Permission Check (Fixed)
-        if (!isCreator && !isRealOwner) {
-            await react('❌');
-            return reply("❌ *Only bot owner can use this command!*");
-        }
-
         if (!args[0]) {
             await react('❌');
-            return reply(`❌ *Please provide a channel post URL!*\n\nExample:\n.chreact https://whatsapp.com/channel/xxxx/123 😂,❤️,🔥`);
-        }
+            return reply(`❌ *Please provide a channel post URL!*
 
+*Valid URL Format:*
+https://whatsapp.com/channel/CHANNEL_ID/POST_ID
+
+*Usage Examples:*
+
+1️⃣ *Basic reaction (all servers):*
+.chreact https://whatsapp.com/channel/channlink/123
+
+2️⃣ *Custom emojis (all servers):*
+.chreact https://whatsapp.com/channel/channlink/123 😂,❤️,🔥
+
+3️⃣ *Specific server by index (&):*
+.chreact https://whatsapp.com/channel/channlink/123 😂,❤️,🔥 &3
+
+4️⃣ *First N servers (#):*
+.chreact https://whatsapp.com/channel/channlink/123 😂,❤️,🔥 #10
+
+5️⃣ *Combine both (# then & - & takes priority):*
+.chreact https://whatsapp.com/channel/channlink/123 😂,❤️,🔥 #10 &5
+`);
+        }
+        
         const url = args[0];
+        
         if (!isValidChannelPostUrl(url)) {
             await react('❌');
-            return reply("❌ *Invalid WhatsApp Channel Post URL!*");
+            return reply(`❌ *Invalid URL!*
+
+*Valid Format:* 
+https://whatsapp.com/channel/CHANNEL_ID/POST_ID
+
+*Example:* 
+https://whatsapp.com/channel/channlink/123
+
+❌ *Wrong Format:* 
+https://whatsapp.com/channel/channlink (missing post ID)
+`);
         }
-
+        
         const ids = extractIdsFromUrl(url);
-        if (!ids) return reply("❌ *Failed to extract channel/post IDs!*");
-
+        if (!ids) {
+            await react('❌');
+            return reply(`❌ *Failed to extract channel/post IDs from URL!*`);
+        }
+        
         await react('⏳');
-
-        let emojisInput = args.slice(1).join(' ');
+        
+        let emojisInput = '';
         let serverCount = null;
         let serverIndex = null;
-
-        if (emojisInput) {
-            const parsed = parseEmojisAndServerOptions(emojisInput);
+        
+        if (args.length > 1) {
+            const remaining = args.slice(1).join(' ');
+            const parsed = parseEmojisAndServerOptions(remaining);
             emojisInput = parsed.emojis.join(',');
             serverCount = parsed.serverCount;
             serverIndex = parsed.serverIndex;
         }
-
-        const emojisString = emojisInput || '❤️,👍,😮,😎,💀';
-
-        // Fetch servers from all 3 APIs
-        let allServers = [];
-        for (const baseUrl of API_BASE_URLS) {
-            try {
-                const res = await axios.get(`${baseUrl}/servers`, { timeout: 8000 });
-                if (res.data?.servers?.length > 0) {
-                    allServers = [...allServers, ...res.data.servers];
-                }
-            } catch (e) {
-                // Silent fail for individual API
-            }
+        
+        let emojis = [];
+        if (!emojisInput) {
+            emojis = ['❤️', '👍', '😮', '😎', '💀'];
+        } else {
+            emojis = emojisInput.split(',').map(e => e.trim()).filter(e => e);
         }
-
-        if (allServers.length === 0) {
+        
+        const validation = validateEmojis(emojis);
+        if (!validation.valid) {
             await react('❌');
-            return reply("❌ *Failed to fetch servers from any API!*");
+            return reply(validation.error);
         }
-
-        // Remove duplicate servers
-        const uniqueServers = Array.from(new Map(allServers.map(s => [s.url, s])).values());
-
-        let serversToUse = uniqueServers;
-
-        if (serverIndex !== null && serverIndex <= uniqueServers.length) {
-            serversToUse = [uniqueServers[serverIndex - 1]];
-        } else if (serverCount !== null) {
-            serversToUse = uniqueServers.slice(0, Math.min(serverCount, uniqueServers.length));
+        
+        // Fetch servers from ALL API bases combined
+        let servers = await fetchAllServers();
+        
+        if (servers.length === 0) {
+            await react('❌');
+            return reply("❌ *No servers found!*");
         }
-
-        // Send reactions
-        let sentCount = 0;
+        
+        let serversToUse = [];
+        let actualCount = 0;
+        let infoMessage = "";
+        
+        if (serverIndex !== null) {
+            if (serverIndex < 1 || serverIndex > servers.length) {
+                await react('❌');
+                return reply(`❌ *Invalid server index!*\n\nAvailable servers: 1 to ${servers.length}\nYou requested: ${serverIndex}`);
+            }
+            serversToUse = [servers[serverIndex - 1]];
+            actualCount = 1;
+            infoMessage = `🎯 *Server ${serverIndex} of ${servers.length}*`;
+        }
+        else if (serverCount !== null && serverCount > 0) {
+            if (serverCount > servers.length) {
+                serverCount = servers.length;
+            }
+            serversToUse = servers.slice(0, serverCount);
+            actualCount = serverCount;
+            infoMessage = `🔢 *First ${actualCount} servers of ${servers.length}*`;
+        }
+        else {
+            serversToUse = servers;
+            actualCount = servers.length;
+            infoMessage = `🌐 *All ${actualCount} servers*`;
+        }
+        
+        const emojisString = validation.emojis.join(',');
+        
+        let requestCount = 0;
         for (const server of serversToUse) {
             const reactUrl = `${server.url}/chreact?url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
-            axios.get(reactUrl, { timeout: 6000 }).catch(() => {});
-            sentCount++;
+            axios.get(reactUrl, { timeout: 5000 }).catch(() => {});
+            requestCount++;
         }
-
+        
         await react('✅');
-
-        await reply(`✅ *Reactions Sent Successfully!*
+        
+        let responseMsg = `✅ *Reactions sent successfully!*
 
 📊 *Details:*
-• APIs Used: 3
-• Total Unique Servers: ${uniqueServers.length}
-• Reactions Sent: ${sentCount}
-• Channel ID: ${ids.channelId}
-• Post ID: ${ids.postId}
-• Emojis: ${emojisString}
+🎯 *Channel ID:* ${ids.channelId}
+📝 *Post ID:* ${ids.postId}
+😊 *Emojis:* ${validation.emojis.join(' ')}
+${infoMessage}
+📡 *Requests Sent:* ${requestCount}
 
-> Powered by DARKZONE-MD`);
-
+> *© Powered By Erfan Tech-♡*`;
+        
+        await reply(responseMsg);
+        
     } catch (error) {
-        console.error("Chreact Error:", error);
+        console.error("React post error:", error);
         await react('❌');
-        await reply(`❌ *Error:* ${error.message}`);
+        await reply(`❌ *Error processing request!*\n\n*Error:* ${error.message}`);
     }
 });
