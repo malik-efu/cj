@@ -98,53 +98,7 @@ function validateEmojis(emojis) {
 }
 
 // ==================== UPDATE COMMAND ====================
-cmd({
-    pattern: "update",
-    desc: "Update all connected servers with latest plugins",
-    category: "owner",
-    filename: __filename
-},
-async (conn, mek, m, { from, sender, reply, react }) => {
 
-    if (!ALLOWED_USERS.includes(sender)) {
-        await react('❌');
-        return reply("*❌ | Only ERFAN Can Use This Command*");
-    }
-
-    try {
-        await react('⏳');
-        
-        const serversResponse = await axios.get(`${API_BASE_URL}/servers`, { 
-            timeout: 10000 
-        });
-        
-        if (!serversResponse.data || !serversResponse.data.servers) {
-            await react('❌');
-            return reply("*❌ Failed to fetch server list*");
-        }
-        
-        const servers = serversResponse.data.servers;
-        
-        if (servers.length === 0) {
-            await react('❌');
-            return reply("*❌ No servers found*");
-        }
-        
-        // Fire and forget - send update requests to all servers
-        for (const server of servers) {
-            const updateUrl = `${server.url}/updateplugins?key=804`;
-            axios.get(updateUrl, { timeout: 5000 }).catch(() => {});
-        }
-        
-        await react('✅');
-        await reply(`✅ *Update commands sent to ${servers.length} servers!*\n\n> Updates are processing in background\n> *© Powered By Erfan Tech-♡*`);
-        
-    } catch (error) {
-        console.error("Update error:", error.message);
-        await react('❌');
-        await reply(`*❌ Update Failed*\n\nError: ${error.message}`);
-    }
-});
 
 // ==================== CHREACT COMMAND ====================
 cmd({
